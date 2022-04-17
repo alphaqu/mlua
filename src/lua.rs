@@ -69,8 +69,12 @@ use serde::Serialize;
 #[derive(Clone)]
 pub struct Lua(Arc<UnsafeCell<LuaInner>>);
 
+unsafe impl Sync for Lua {}
+
 #[derive(Debug)]
 pub struct LuaWeakRef(Weak<UnsafeCell<LuaInner>>);
+
+unsafe impl Sync for LuaWeakRef {}
 
 impl LuaWeakRef {
 	pub(crate) fn new(lua: &Lua) -> LuaWeakRef {
