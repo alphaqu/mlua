@@ -8,7 +8,7 @@ use std::mem::ManuallyDrop;
 use std::ops::{Deref, DerefMut};
 use std::os::raw::{c_char, c_int, c_void};
 use std::panic::{catch_unwind, resume_unwind, AssertUnwindSafe, Location};
-use std::sync::{Arc, Mutex, Weak};
+use std::sync::{Arc, Mutex, RwLock, Weak};
 use std::{mem, ptr, str};
 
 use rustc_hash::FxHashMap;
@@ -70,11 +70,12 @@ use serde::Serialize;
 pub struct Lua(Arc<UnsafeCell<LuaInner>>);
 
 unsafe impl Sync for Lua {}
+unsafe impl Send for Lua {}
 
 #[derive(Debug)]
 pub struct LuaWeakRef(Weak<UnsafeCell<LuaInner>>);
-
 unsafe impl Sync for LuaWeakRef {}
+unsafe impl Send for LuaWeakRef {}
 
 impl LuaWeakRef {
 	pub(crate) fn new(lua: &Lua) -> LuaWeakRef {
