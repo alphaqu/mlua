@@ -1,4 +1,4 @@
-use std::any::{Any, TypeId};
+use std::any::{Any, type_name, TypeId};
 use std::cell::{Ref, RefCell, RefMut, UnsafeCell};
 use std::collections::HashMap;
 use std::ffi::{CStr, CString};
@@ -63,6 +63,7 @@ use {
 
 #[cfg(feature = "serialize")]
 use serde::Serialize;
+use tracing::{debug_span, info_span, span};
 
 /// Top level Lua struct which represents an instance of Lua VM.
 #[repr(transparent)]
@@ -74,6 +75,7 @@ unsafe impl Send for Lua {}
 
 #[derive(Debug)]
 pub struct LuaWeakRef(Weak<UnsafeCell<LuaInner>>);
+
 unsafe impl Sync for LuaWeakRef {}
 unsafe impl Send for LuaWeakRef {}
 
@@ -1389,6 +1391,7 @@ impl Lua {
 		let name = chunk
 			.name()
 			.unwrap_or_else(|| Location::caller().to_string());
+		let _span = info_span!("Loading", name).enter();
 
 		Chunk {
 			lua: LuaWeakRef::new(self),
@@ -1447,6 +1450,8 @@ impl Lua {
 		where
 			S: AsRef<[u8]> + ?Sized,
 	{
+		let _span = debug_span!("Creating String").enter();
+
 		unsafe {
 			let _sg = StackGuard::new(self.state);
 			check_stack(self.state, 3)?;
@@ -1457,6 +1462,8 @@ impl Lua {
 
 	/// Creates and returns a new empty table.
 	pub fn create_table(&self) -> Result<Table> {
+		let _span = debug_span!("Creating Table").enter();
+
 		unsafe {
 			let _sg = StackGuard::new(self.state);
 			check_stack(self.state, 2)?;
@@ -1470,6 +1477,7 @@ impl Lua {
 	/// `nrec` is a hint for how many other elements the table will have.
 	/// Lua may use these hints to preallocate memory for the new table.
 	pub fn create_table_with_capacity(&self, narr: c_int, nrec: c_int) -> Result<Table> {
+		let _span = debug_span!("Creating Table").enter();
 		unsafe {
 			let _sg = StackGuard::new(self.state);
 			check_stack(self.state, 3)?;
@@ -1485,6 +1493,7 @@ impl Lua {
 			V: ToLua,
 			I: IntoIterator<Item=(K, V)>,
 	{
+		let _span = debug_span!("Creating Table").enter();
 		unsafe {
 			let _sg = StackGuard::new(self.state);
 			check_stack(self.state, 6)?;
@@ -1577,6 +1586,7 @@ impl Lua {
 			R: ToLuaMulti,
 			F: 'static + MaybeSend + Fn(&Lua, A) -> Result<R>,
 	{
+		let _span = debug_span!("Creating Function").enter();
 		self.create_callback(Box::new(move |lua, args| {
 			func(lua, A::from_lua_multi(args, lua)?)?.to_lua_multi(lua)
 		}))
@@ -1594,6 +1604,7 @@ impl Lua {
 			R: ToLuaMulti,
 			F: 'static + MaybeSend + FnMut(&Lua, A) -> Result<R>,
 	{
+		let _span = debug_span!("Creating Mutable Function").enter();
 		let func = RefCell::new(func);
 		self.create_function(move |lua, args| {
 			(*func
@@ -1661,6 +1672,7 @@ impl Lua {
 			F: 'static + MaybeSend + Fn(&Lua, A) -> FR,
 			FR: 'lua + Future<Output=Result<R>>,
 	{
+		let _span = debug_span!("Creating Async Function").enter();
 		self.create_async_callback(Box::new(move |lua, args| {
 			let args = match A::from_lua_multi(args, lua) {
 				Ok(args) => args,
@@ -1674,6 +1686,7 @@ impl Lua {
 	///
 	/// Equivalent to `coroutine.create`.
 	pub fn create_thread(&self, func: Function) -> Result<Thread> {
+		let _span = debug_span!("Creating Thread").enter();
 		unsafe {
 			let _sg = StackGuard::new(self.state);
 			check_stack(self.state, 3)?;
@@ -1751,6 +1764,7 @@ impl Lua {
 		where
 			T: 'static + MaybeSend + UserData,
 	{
+		let _span = debug_span!("Creating Userdata", ty = type_name::<T>()).enter();
 		unsafe { self.make_userdata(UserDataCell::new(data)) }
 	}
 
@@ -1763,6 +1777,7 @@ impl Lua {
 		where
 			T: 'static + MaybeSend + UserData + Serialize,
 	{
+		let _span = debug_span!("Creating Serde Userdata", ty = type_name::<T>()).enter();
 		unsafe { self.make_userdata(UserDataCell::new_ser(data)) }
 	}
 
@@ -1815,6 +1830,7 @@ impl Lua {
 			R: 'static,
 			F: FnOnce(&Scope<'scope>) -> Result<R>,
 	{
+
 		f(&Scope::new(self))
 	}
 
@@ -1844,6 +1860,7 @@ impl Lua {
 	/// To succeed, the value must be a string (in which case this is a no-op), an integer, or a
 	/// number.
 	pub fn coerce_string(&self, v: Value) -> Result<Option<String>> {
+		let _span = debug_span!("Coercing string").enter();
 		Ok(match v {
 			Value::String(s) => Some(s),
 			v => unsafe {
@@ -1870,6 +1887,7 @@ impl Lua {
 	/// representation as an integer, or a string that can be converted to an integer. Refer to the
 	/// Lua manual for details.
 	pub fn coerce_integer(&self, v: Value) -> Result<Option<Integer>> {
+		let _span = debug_span!("Coercing Integer").enter();
 		Ok(match v {
 			Value::Integer(i) => Some(i),
 			v => unsafe {
@@ -1894,6 +1912,7 @@ impl Lua {
 	/// To succeed, the value must be a number or a string that can be converted to a number. Refer
 	/// to the Lua manual for details.
 	pub fn coerce_number(&self, v: Value) -> Result<Option<Number>> {
+		let _span = debug_span!("Coercing Number").enter();
 		Ok(match v {
 			Value::Number(n) => Some(n),
 			v => unsafe {
@@ -1914,16 +1933,19 @@ impl Lua {
 
 	/// Converts a value that implements `ToLua` into a `Value` instance.
 	pub fn pack<'lua, T: ToLua>(&'lua self, t: T) -> Result<Value> {
+		let _span = debug_span!("Packing", ty = type_name::<T>()).enter();
 		t.to_lua(self)
 	}
 
 	/// Converts a `Value` instance into a value that implements `FromLua`.
 	pub fn unpack<'lua, T: FromLua>(&'lua self, value: Value) -> Result<T> {
+		let _span = debug_span!("Unpacking", ty = type_name::<T>()).enter();
 		T::from_lua(value, self)
 	}
 
 	/// Converts a value that implements `ToLuaMulti` into a `MultiValue` instance.
 	pub fn pack_multi<'lua, T: ToLuaMulti>(&'lua self, t: T) -> Result<MultiValue> {
+		let _span = debug_span!("Packing Multi", ty = type_name::<T>()).enter();
 		t.to_lua_multi(self)
 	}
 
@@ -1932,6 +1954,7 @@ impl Lua {
 		&'lua self,
 		value: MultiValue,
 	) -> Result<T> {
+		let _span = debug_span!("Unpacking Multi", ty = type_name::<T>()).enter();
 		T::from_lua_multi(value, self)
 	}
 
