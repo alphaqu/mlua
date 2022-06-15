@@ -1391,7 +1391,6 @@ impl Lua {
 		let name = chunk
 			.name()
 			.unwrap_or_else(|| Location::caller().to_string());
-		let _span = info_span!("Loading", name).enter();
 
 		Chunk {
 			lua: LuaWeakRef::new(self),
