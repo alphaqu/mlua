@@ -9,8 +9,7 @@ use crate::value::{FromLuaMulti, ToLuaMulti};
 
 #[cfg(any(
     feature = "lua54",
-    all(feature = "luajit", feature = "vendored"),
-    feature = "luau",
+    all(feature = "luajit", feature = "vendored")
 ))]
 use crate::function::Function;
 
@@ -150,7 +149,7 @@ impl Thread {
             }
             results
         };
-        R::from_lua_multi(results, lua)
+        Ok(R::from_lua_multi(results, lua)?)
     }
 
     /// Gets the status of the thread.
@@ -177,19 +176,18 @@ impl Thread {
     /// Returns a error in case of either the original error that stopped the thread or errors
     /// in closing methods.
     ///
-    /// In [LuaJIT] and Luau: resets to the initial state of a newly created Lua thread.
+    /// In [LuaJIT]: resets to the initial state of a newly created Lua thread.
     /// Lua threads in arbitrary states (like yielded or errored) can be reset properly.
     ///
     /// Sets a Lua function for the thread afterwards.
     ///
-    /// Requires `feature = "lua54"` OR `feature = "luajit,vendored"` OR `feature = "luau"`
+    /// Requires `feature = "lua54"` OR `feature = "luajit,vendored"`
     ///
     /// [Lua 5.4]: https://www.lua.org/manual/5.4/manual.html#lua_resetthread
     /// [LuaJIT]: https://github.com/openresty/luajit2#lua_resetthread
     #[cfg(any(
         feature = "lua54",
-        all(feature = "luajit", feature = "vendored"),
-        feature = "luau",
+        all(feature = "luajit", feature = "vendored")
     ))]
     pub fn reset(&self, func: Function) -> Result<()> {
         let lua = &self.0.lua.optional()?;
@@ -208,18 +206,9 @@ impl Thread {
             }
             #[cfg(all(feature = "luajit", feature = "vendored"))]
             ffi::lua_resetthread(lua.state, thread_state);
-            #[cfg(feature = "luau")]
-            ffi::lua_resetthread(thread_state);
 
             lua.push_ref(&func.0);
             ffi::lua_xmove(lua.state, thread_state, 1);
-
-            #[cfg(feature = "luau")]
-            {
-                // Inherit `LUA_GLOBALSINDEX` from the caller
-                ffi::lua_xpush(lua.state, thread_state, ffi::LUA_GLOBALSINDEX);
-                ffi::lua_replace(thread_state, ffi::LUA_GLOBALSINDEX);
-            }
 
             Ok(())
         }
@@ -286,53 +275,6 @@ impl Thread {
             recycle: false,
         }
     }
-
-    /// Enables sandbox mode on this thread.
-    ///
-    /// Under the hood replaces the global environment table with a new table,
-    /// that performs writes locally and proxies reads to caller's global environment.
-    ///
-    /// This mode ideally should be used together with the global sandbox mode [`Lua::sandbox()`].
-    ///
-    /// Please note that Luau links environment table with chunk when loading it into Lua state.
-    /// Therefore you need to load chunks into a thread to link with the thread environment.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use mlua::{Lua, Result};
-    /// # fn main() -> Result<()> {
-    /// let lua = Lua::new();
-    /// let thread = lua.create_thread(lua.create_function(|lua2, ()| {
-    ///     lua2.load("var = 123").exec()?;
-    ///     assert_eq!(lua2.globals().get::<_, u32>("var")?, 123);
-    ///     Ok(())
-    /// })?)?;
-    /// thread.sandbox()?;
-    /// thread.resume(())?;
-    ///
-    /// // The global environment should be unchanged
-    /// assert_eq!(lua.globals().get::<_, Option<u32>>("var")?, None);
-    /// # Ok(())
-    /// # }
-    /// ```
-    ///
-    /// Requires `feature = "luau"`
-    #[cfg(any(feature = "luau", docsrs))]
-    #[cfg_attr(docsrs, doc(cfg(feature = "luau")))]
-    #[doc(hidden)]
-    pub fn sandbox(&self) -> Result<()> {
-        let lua = &self.0.lua.optional()?;
-        unsafe {
-            let thread = lua.ref_thread_exec(|t| ffi::lua_tothread(t, self.0.index));
-            check_stack(thread, 1)?;
-            check_stack(lua.state, 3)?;
-            // Inherit `LUA_GLOBALSINDEX` from the caller
-            ffi::lua_xpush(lua.state, thread, ffi::LUA_GLOBALSINDEX);
-            ffi::lua_replace(thread, ffi::LUA_GLOBALSINDEX);
-            protect_lua!(lua.state, 0, 0, |_| ffi::luaL_sandboxthread(thread))
-        }
-    }
 }
 
 impl PartialEq for Thread {
@@ -352,8 +294,7 @@ impl<R> AsyncThread<R> {
 #[cfg(feature = "async")]
 #[cfg(any(
     feature = "lua54",
-    all(feature = "luajit", feature = "vendored"),
-    feature = "luau",
+    all(feature = "luajit", feature = "vendored")
 ))]
 impl<R> Drop for AsyncThread<R> {
     fn drop(&mut self) {

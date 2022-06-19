@@ -1,4 +1,6 @@
+use std::fmt::Display;
 use std::marker::PhantomData;
+use eyre::WrapErr;
 
 #[cfg(feature = "serialize")]
 use {
@@ -96,7 +98,7 @@ impl Table {
     /// ```
     ///
     /// [`raw_get`]: #method.raw_get
-    pub fn get<K: ToLua, V: FromLua>(&self, key: K) -> Result<V> {
+    pub fn get<K: ToLua, V: FromLua>(&self, key: K) -> eyre::Result<V> {
         let lua = &self.0.lua.optional()?;
         let key = key.to_lua(lua)?;
 
@@ -114,7 +116,7 @@ impl Table {
     }
 
     /// Checks whether the table contains a non-nil value for `key`.
-    pub fn contains_key<K: ToLua>(&self, key: K) -> Result<bool> {
+    pub fn contains_key<K: ToLua>(&self, key: K) -> eyre::Result<bool> {
         let lua = &self.0.lua.optional()?;
         let key = key.to_lua(lua)?;
 
@@ -129,35 +131,6 @@ impl Table {
         }
     }
 
-    /// Compares two tables for equality.
-    ///
-    /// Tables are compared by reference first.
-    /// If they are not primitively equals, then mlua will try to invoke the `__eq` metamethod.
-    /// mlua will check `self` first for the metamethod, then `other` if not found.
-    ///
-    /// # Examples
-    ///
-    /// Compare two tables using `__eq` metamethod:
-    ///
-    /// ```
-    /// # use mlua::{Lua, Result, Table};
-    /// # fn main() -> Result<()> {
-    /// # let lua = Lua::new();
-    /// let table1 = lua.create_table()?;
-    /// table1.set(1, "value")?;
-    ///
-    /// let table2 = lua.create_table()?;
-    /// table2.set(2, "value")?;
-    ///
-    /// let always_equals_mt = lua.create_table()?;
-    /// always_equals_mt.set("__eq", lua.create_function(|_, (_t1, _t2): (Table, Table)| Ok(true))?)?;
-    /// table2.set_metatable(Some(always_equals_mt));
-    ///
-    /// assert!(table1.equals(&table1.clone())?);
-    /// assert!(table1.equals(&table2)?);
-    /// # Ok(())
-    /// # }
-    /// ```
     pub fn equals<T: AsRef<Self>>(&self, other: T) -> Result<bool> {
         let other = other.as_ref();
         if self == other {
@@ -203,7 +176,7 @@ impl Table {
     }
 
     /// Gets the value associated to `key` without invoking metamethods.
-    pub fn raw_get<K: ToLua, V: FromLua>(&self, key: K) -> Result<V> {
+    pub fn raw_get<K: ToLua, V: FromLua>(&self, key: K) -> eyre::Result<V> {
         let lua = &self.0.lua.optional()?;
         let key = key.to_lua(lua)?;
 
@@ -346,34 +319,6 @@ impl Table {
             }
             ffi::lua_setmetatable(lua.state, -2);
         }
-    }
-
-    /// Sets `readonly` attribute on the table.
-    ///
-    /// Requires `feature = "luau"`
-    #[cfg(any(feature = "luau", doc))]
-    #[cfg_attr(docsrs, doc(cfg(feature = "luau")))]
-    pub fn set_readonly(&self, enabled: bool) {
-        let lua = &self.0.lua.optional()?;
-        unsafe {
-            lua.ref_thread_exec(|refthr| {
-                ffi::lua_setreadonly(refthr, self.0.index, enabled as _);
-                if !enabled {
-                    // Reset "safeenv" flag
-                    ffi::lua_setsafeenv(refthr, self.0.index, 0);
-                }
-            });
-        }
-    }
-
-    /// Returns `readonly` attribute of the table.
-    ///
-    /// Requires `feature = "luau"`
-    #[cfg(any(feature = "luau", doc))]
-    #[cfg_attr(docsrs, doc(cfg(feature = "luau")))]
-    pub fn is_readonly(&self) -> bool {
-        let lua = &self.0.lua.optional()?;
-        unsafe { lua.ref_thread_exec(|refthr| ffi::lua_getreadonly(refthr, self.0.index) != 0) }
     }
 
     /// Consume this table and return an iterator over the pairs of the table.
@@ -744,7 +689,7 @@ where
     K: FromLua,
     V: FromLua,
 {
-    type Item = Result<(K, V)>;
+    type Item =  eyre::Result<(K, V)>;
 
     fn next(&mut self) -> Option<Self::Item> {
         let lua = &self.table.lua.optional().ok()?;
@@ -804,7 +749,7 @@ impl<V> Iterator for TableSequence<V>
 where
     V: FromLua,
 {
-    type Item = Result<V>;
+    type Item = eyre::Result<V>;
 
     fn next(&mut self) -> Option<Self::Item> {
         let lua = &self.table.lua.optional().ok()?;

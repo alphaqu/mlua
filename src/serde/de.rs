@@ -123,8 +123,6 @@ impl<'lua, 'de> serde::Deserializer<'de> for Deserializer {
             }
             #[allow(clippy::useless_conversion)]
             Value::Number(n) => visitor.visit_f64(n.into()),
-            #[cfg(feature = "luau")]
-            Value::Vector(_, _, _) => self.deserialize_seq(visitor),
             Value::String(s) => match s.to_str() {
                 Ok(s) => visitor.visit_str(s),
                 Err(_) => visitor.visit_bytes(s.as_bytes()),
@@ -216,16 +214,6 @@ impl<'lua, 'de> serde::Deserializer<'de> for Deserializer {
         V: de::Visitor<'de>,
     {
         match self.value {
-            #[cfg(feature = "luau")]
-            Value::Vector(x, y, z) => {
-                let mut deserializer = VecDeserializer {
-                    vec: [x, y, z],
-                    next: 0,
-                    options: self.options,
-                    visited: self.visited,
-                };
-                visitor.visit_seq(&mut deserializer)
-            }
             Value::Table(t) => {
                 let _guard = RecursionGuard::new(&t, &self.visited);
 
@@ -361,39 +349,6 @@ impl<'lua, 'de> de::SeqAccess<'de> for SeqDeserializer {
             (lower, Some(upper)) if lower == upper => Some(upper),
             _ => None,
         }
-    }
-}
-
-#[cfg(feature = "luau")]
-struct VecDeserializer {
-    vec: [f32; 3],
-    next: usize,
-    options: Options,
-    visited: Rc<RefCell<FxHashSet<*const c_void>>>,
-}
-
-#[cfg(feature = "luau")]
-impl<'de> de::SeqAccess<'de> for VecDeserializer {
-    type Error = Error;
-
-    fn next_element_seed<T>(&mut self, seed: T) -> Result<Option<T::Value>>
-    where
-        T: de::DeserializeSeed<'de>,
-    {
-        match self.vec.get(self.next) {
-            Some(&n) => {
-                self.next += 1;
-                let visited = Rc::clone(&self.visited);
-                let deserializer =
-                    Deserializer::from_parts(Value::Number(n as _), self.options, visited);
-                seed.deserialize(deserializer).map(Some)
-            }
-            None => Ok(None),
-        }
-    }
-
-    fn size_hint(&self) -> Option<usize> {
-        Some(3)
     }
 }
 

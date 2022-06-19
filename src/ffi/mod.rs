@@ -16,9 +16,6 @@ pub use lua52::*;
 #[cfg(any(feature = "lua51", feature = "luajit"))]
 pub use lua51::*;
 
-#[cfg(feature = "luau")]
-pub use luau::*;
-
 #[cfg(any(feature = "lua54", feature = "lua53", feature = "lua52"))]
 pub const LUA_MAX_UPVALUES: c_int = 255;
 
@@ -27,9 +24,6 @@ pub const LUA_MAX_UPVALUES: c_int = 60;
 
 #[cfg(all(feature = "luajit", feature = "vendored"))]
 pub const LUA_MAX_UPVALUES: c_int = 120;
-
-#[cfg(feature = "luau")]
-pub const LUA_MAX_UPVALUES: c_int = 200;
 
 // I believe `luaL_traceback` < 5.4 requires this much free stack to not error.
 // 5.4 uses `luaL_Buffer`
@@ -71,7 +65,7 @@ pub const SYS_MIN_ALIGN: usize = 4;
 
 // Hack to avoid stripping a few unused Lua symbols that could be imported
 // by C modules in unsafe mode
-#[cfg(not(feature = "luau"))]
+
 pub(crate) fn keep_lua_symbols() {
     let mut symbols: Vec<*const extern "C" fn()> = Vec::new();
     symbols.push(lua_atpanic as _);
@@ -96,6 +90,3 @@ pub mod lua52;
 
 #[cfg(any(feature = "lua51", feature = "luajit"))]
 pub mod lua51;
-
-#[cfg(feature = "luau")]
-pub mod luau;

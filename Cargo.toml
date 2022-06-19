@@ -1,5 +1,5 @@
 [package]
-name = "mlua"
+name = "apollo"
 version = "0.8.0-beta.3" # remember to update html_root_url and mlua_derive
 authors = ["Aleksandr Orlenko <zxteam@pm.me>", "kyren <catherine@chucklefish.org>"]
 edition = "2018"
@@ -20,13 +20,6 @@ with async/await features and support of writing native Lua modules in Rust.
 features = ["lua54", "vendored", "async", "send", "serialize", "macros"]
 rustdoc-args = ["--cfg", "docsrs"]
 
-[workspace]
-members = [
-    "mlua_derive",
-    "examples/module",
-    "tests/module",
-]
-
 [features]
 lua54 = []
 lua53 = []
@@ -34,16 +27,14 @@ lua52 = []
 lua51 = []
 luajit = []
 luajit52 = ["luajit"]
-luau = ["luau0-src"]
-vendored = ["lua-src", "luajit-src"]
-module = ["mlua_derive"]
+vendored = ["luajit-src"]
 async = ["futures-core", "futures-task", "futures-util"]
 send = []
+macro = ["apollo-macro"]
 serialize = ["serde", "erased-serde"]
-macros = ["mlua_derive/macros"]
 
 [dependencies]
-mlua_derive = { version = "=0.6.0", optional = true, path = "mlua_derive" }
+eyre = "0.6.8"
 bstr = { version = "0.2", features = ["std"], default_features = false }
 once_cell = { version = "1.0" }
 num-traits = { version = "0.2.14" }
@@ -51,6 +42,7 @@ rustc-hash = "1.0"
 futures-core = { version = "0.3.5", optional = true }
 futures-task = { version = "0.3.5", optional = true }
 futures-util = { version = "0.3.5", optional = true }
+apollo-macro = { path = "../apollo-macro", optional = true }
 serde = { version = "1.0", optional = true }
 erased-serde = { version = "0.3", optional = true }
 tracing = "0.1.35"
@@ -58,53 +50,4 @@ tracing = "0.1.35"
 [build-dependencies]
 cc = { version = "1.0" }
 pkg-config = { version = "0.3.17" }
-lua-src = { version = ">= 544.0.0, < 550.0.0", optional = true }
 luajit-src = { version = ">= 210.3.1, < 220.0.0", optional = true }
-luau0-src = { version = "0.2.2", optional = true }
-
-[dev-dependencies]
-rustyline = "9.0"
-criterion = { version = "0.3.4", features = ["html_reports", "async_tokio"] }
-trybuild = "1.0"
-futures = "0.3.5"
-hyper = { version = "0.14", features = ["client", "server"] }
-reqwest = { version = "0.11", features = ["json"] }
-tokio = { version = "1.0", features = ["full"] }
-futures-timer = "3.0"
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-maplit = "1.0"
-tempfile = "3"
-
-[[bench]]
-name = "benchmark"
-harness = false
-required-features = ["async"]
-
-[[example]]
-name = "async_http_client"
-required-features = ["async", "macros"]
-
-[[example]]
-name = "async_http_reqwest"
-required-features = ["async", "serialize", "macros"]
-
-[[example]]
-name = "async_http_server"
-required-features = ["async", "macros"]
-
-[[example]]
-name = "async_tcp_server"
-required-features = ["async", "macros"]
-
-[[example]]
-name = "guided_tour"
-required-features = ["macros"]
-
-[[example]]
-name = "serialize"
-required-features = ["serialize"]
-
-[[example]]
-name = "userdata"
-required-features = ["macros"]

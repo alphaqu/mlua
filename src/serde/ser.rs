@@ -110,7 +110,7 @@ macro_rules! lua_serialize_number {
     ($name:ident, $t:ty) => {
         #[inline]
         fn $name(self, value: $t) -> Result<Value> {
-            value.to_lua(&self.lua.optional()?)
+            Ok(value.to_lua(&self.lua.optional()?)?)
         }
     };
 }

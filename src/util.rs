@@ -279,34 +279,13 @@ where
 }
 
 // Internally uses 3 stack spaces, does not call checkstack.
-#[cfg(not(feature = "luau"))]
+
 #[inline]
 pub unsafe fn push_userdata<T>(state: *mut ffi::lua_State, t: T) -> Result<()> {
     let ud = protect_lua!(state, 0, 1, |state| {
         ffi::lua_newuserdata(state, mem::size_of::<T>()) as *mut T
     })?;
     ptr::write(ud, t);
-    Ok(())
-}
-
-// Internally uses 3 stack spaces, does not call checkstack.
-#[cfg(feature = "luau")]
-#[inline]
-pub unsafe fn push_userdata<T>(state: *mut ffi::lua_State, t: T) -> Result<()> {
-    unsafe extern "C" fn destructor<T>(ud: *mut c_void) {
-        let ud = ud as *mut T;
-        if *(ud.offset(1) as *mut u8) == 0 {
-            ptr::drop_in_place(ud);
-        }
-    }
-
-    let ud = protect_lua!(state, 0, 1, |state| {
-        let size = mem::size_of::<T>() + 1;
-        ffi::lua_newuserdatadtor(state, size, destructor::<T>) as *mut T
-    })?;
-    ptr::write(ud, t);
-    *(ud.offset(1) as *mut u8) = 0; // Mark as not destructed
-
     Ok(())
 }
 
@@ -341,9 +320,6 @@ pub unsafe fn take_userdata<T>(state: *mut ffi::lua_State) -> T {
     ffi::lua_setmetatable(state, -2);
     let ud = get_userdata::<T>(state, -1);
     ffi::lua_pop(state, 1);
-    if cfg!(feature = "luau") {
-        *(ud.offset(1) as *mut u8) = 1; // Mark as destructed
-    }
     ptr::read(ud)
 }
 
@@ -544,7 +520,7 @@ pub unsafe fn init_userdata_metatable<T>(
         rawset_field(state, -2, "__newindex")?;
     }
 
-    #[cfg(not(feature = "luau"))]
+
     {
         ffi::lua_pushcfunction(state, userdata_destructor::<T>);
         rawset_field(state, -2, "__gc")?;
@@ -558,7 +534,7 @@ pub unsafe fn init_userdata_metatable<T>(
     Ok(())
 }
 
-#[cfg(not(feature = "luau"))]
+
 pub unsafe extern "C" fn userdata_destructor<T>(state: *mut ffi::lua_State) -> c_int {
     // It's probably NOT a good idea to catch Rust panics in finalizer
     // Lua 5.4 ignores it, other versions generates `LUA_ERRGCMM` without calling message handler
@@ -746,8 +722,6 @@ pub unsafe fn get_main_state(state: *mut ffi::lua_State) -> Option<*mut ffi::lua
             None
         }
     }
-    #[cfg(feature = "luau")]
-    Some(ffi::lua_mainthread(state))
 }
 
 // Initialize the internal (with __gc method) metatable for a type T.
@@ -760,7 +734,7 @@ pub unsafe fn init_gc_metatable<T: Any>(
 
     push_table(state, 0, 3)?;
 
-    #[cfg(not(feature = "luau"))]
+
     {
         ffi::lua_pushcfunction(state, userdata_destructor::<T>);
         rawset_field(state, -2, "__gc")?;
@@ -932,14 +906,7 @@ pub(crate) enum WrappedFailure {
 impl WrappedFailure {
     pub(crate) unsafe fn new_userdata(state: *mut ffi::lua_State) -> *mut Self {
         let size = mem::size_of::<WrappedFailure>();
-        #[cfg(feature = "luau")]
-        let ud = {
-            unsafe extern "C" fn destructor(p: *mut c_void) {
-                ptr::drop_in_place(p as *mut WrappedFailure);
-            }
-            ffi::lua_newuserdatadtor(state, size, destructor) as *mut Self
-        };
-        #[cfg(not(feature = "luau"))]
+
         let ud = ffi::lua_newuserdata(state, size) as *mut Self;
         ptr::write(ud, WrappedFailure::None);
         ud
@@ -964,13 +931,6 @@ pub(crate) unsafe fn to_string(state: *mut ffi::lua_State, index: c_int) -> Stri
             } else {
                 i.to_string()
             }
-        }
-        #[cfg(feature = "luau")]
-        ffi::LUA_TVECTOR => {
-            let v = ffi::lua_tovector(state, index);
-            mlua_debug_assert!(!v.is_null(), "vector is null");
-            let (x, y, z) = (*v, *v.add(1), *v.add(2));
-            format!("vector({},{},{})", x, y, z)
         }
         ffi::LUA_TSTRING => {
             let mut size = 0;

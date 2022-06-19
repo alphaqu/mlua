@@ -10,9 +10,8 @@ use std::ffi::CStr;
 #[cfg(feature = "async")]
 use futures_core::future::LocalBoxFuture;
 
-use crate::error::Result;
 use crate::ffi;
-#[cfg(not(feature = "luau"))]
+
 use crate::hook::Debug;
 use crate::lua::{ExtraData, Lua, LuaWeakRef};
 use crate::util::{assert_stack, StackGuard};
@@ -28,7 +27,7 @@ pub type Number = ffi::lua_Number;
 pub struct LightUserData(pub *mut c_void);
 
 pub(crate) type Callback<'a> =
-    Box<dyn Fn(&'a Lua, MultiValue) -> Result<MultiValue> + 'a>;
+    Box<dyn Fn(&'a Lua, MultiValue) -> eyre::Result<MultiValue> + 'a>;
 
 pub(crate) struct Upvalue<T> {
     pub(crate) data: T,
@@ -39,36 +38,22 @@ pub(crate) type CallbackUpvalue = Upvalue<Callback<'static>>;
 
 #[cfg(feature = "async")]
 pub(crate) type AsyncCallback<'a> =
-    Box<dyn Fn(&Lua, MultiValue) -> LocalBoxFuture<Result<MultiValue>> + 'a>;
+    Box<dyn Fn(&Lua, MultiValue) -> LocalBoxFuture<eyre::Result<MultiValue>> + 'a>;
 
 #[cfg(feature = "async")]
 pub(crate) type AsyncCallbackUpvalue = Upvalue<AsyncCallback<'static>>;
 
 #[cfg(feature = "async")]
-pub(crate) type AsyncPollUpvalue = Upvalue<LocalBoxFuture<'static, Result<MultiValue>>>;
+pub(crate) type AsyncPollUpvalue = Upvalue<LocalBoxFuture<'static, eyre::Result<MultiValue>>>;
 
-/// Type to set next Luau VM action after executing interrupt function.
-#[cfg(any(feature = "luau", doc))]
-#[cfg_attr(docsrs, doc(cfg(feature = "luau")))]
-pub enum VmState {
-    Continue,
-    Yield,
-}
+#[cfg(all(feature = "send"))]
+pub(crate) type HookCallback = Arc<dyn Fn(&Lua, Debug) -> eyre::Result<()> + Send>;
 
-#[cfg(all(feature = "send", not(feature = "luau")))]
-pub(crate) type HookCallback = Arc<dyn Fn(&Lua, Debug) -> Result<()> + Send>;
-
-#[cfg(all(not(feature = "send"), not(feature = "luau")))]
+#[cfg(all(not(feature = "send")))]
 pub(crate) type HookCallback = Arc<dyn Fn(&Lua, Debug) -> Result<()>>;
 
-#[cfg(all(feature = "luau", feature = "send"))]
-pub(crate) type InterruptCallback = Arc<dyn Fn() -> Result<VmState> + Send>;
-
-#[cfg(all(feature = "luau", not(feature = "send")))]
-pub(crate) type InterruptCallback = Arc<dyn Fn() -> Result<VmState>>;
-
 #[cfg(all(feature = "send", feature = "lua54"))]
-pub(crate) type WarnCallback = Box<dyn Fn(&Lua, &CStr, bool) -> Result<()> + Send>;
+pub(crate) type WarnCallback = Box<dyn Fn(&Lua, &CStr, bool) -> eyre::Result<()> + Send>;
 
 #[cfg(all(not(feature = "send"), feature = "lua54"))]
 pub(crate) type WarnCallback = Box<dyn Fn(&Lua, &CStr, bool) -> Result<()>>;

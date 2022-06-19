@@ -1,4 +1,4 @@
-use std::any::TypeId;
+use std::any::{type_name, TypeId};
 use std::cell::{Ref, RefCell, RefMut};
 use std::fmt;
 use std::hash::{Hash, Hasher};
@@ -8,6 +8,7 @@ use std::string::String as StdString;
 
 #[cfg(feature = "async")]
 use std::future::Future;
+use eyre::{Report, WrapErr};
 
 #[cfg(feature = "serialize")]
 use {
@@ -16,7 +17,7 @@ use {
 };
 
 use crate::error::{Error, Result};
-use crate::ffi;
+use crate::{ffi, Value};
 use crate::function::Function;
 use crate::lua::Lua;
 use crate::table::{Table, TablePairs};
@@ -301,7 +302,7 @@ pub trait UserDataMethods<T: UserData> {
         S: AsRef<[u8]> + ?Sized,
         A: FromLuaMulti,
         R: ToLuaMulti,
-        M: 'static + MaybeSend + Fn(&Lua, &T, A) -> Result<R>;
+        M: 'static + MaybeSend + Fn(&Lua, &T, A) -> eyre::Result<R>;
 
     /// Add a regular method which accepts a `&mut T` as the first parameter.
     ///
@@ -313,7 +314,7 @@ pub trait UserDataMethods<T: UserData> {
         S: AsRef<[u8]> + ?Sized,
         A: FromLuaMulti,
         R: ToLuaMulti,
-        M: 'static + MaybeSend + FnMut(&Lua, &mut T, A) -> Result<R>;
+        M: 'static + MaybeSend + FnMut(&Lua, &mut T, A) -> eyre::Result<R>;
 
     /// Add an async method which accepts a `T` as the first parameter and returns Future.
     /// The passed `T` is cloned from the original value.
@@ -332,7 +333,7 @@ pub trait UserDataMethods<T: UserData> {
         A: FromLuaMulti,
         R: ToLuaMulti,
         M: 'static + MaybeSend + Fn(&Lua, T, A) -> MR,
-        MR: Future<Output = Result<R>>;
+        MR: Future<Output = eyre::Result<R>>;
 
     /// Add a regular method as a function which accepts generic arguments, the first argument will
     /// be a [`AnyUserData`] of type `T` if the method is called with Lua method syntax:
@@ -349,7 +350,7 @@ pub trait UserDataMethods<T: UserData> {
         S: AsRef<[u8]> + ?Sized,
         A: FromLuaMulti,
         R: ToLuaMulti,
-        F: 'static + MaybeSend + Fn(&Lua, A) -> Result<R>;
+        F: 'static + MaybeSend + Fn(&Lua, A) -> eyre::Result<R>;
 
     /// Add a regular method as a mutable function which accepts generic arguments.
     ///
@@ -361,7 +362,7 @@ pub trait UserDataMethods<T: UserData> {
         S: AsRef<[u8]> + ?Sized,
         A: FromLuaMulti,
         R: ToLuaMulti,
-        F: 'static + MaybeSend + FnMut(&Lua, A) -> Result<R>;
+        F: 'static + MaybeSend + FnMut(&Lua, A) -> eyre::Result<R>;
 
     /// Add a regular method as an async function which accepts generic arguments
     /// and returns Future.
@@ -379,7 +380,7 @@ pub trait UserDataMethods<T: UserData> {
         A: FromLuaMulti,
         R: ToLuaMulti,
         F: 'static + MaybeSend + Fn(&Lua, A) -> FR,
-        FR: Future<Output = Result<R>>;
+        FR: Future<Output = eyre::Result<R>>;
 
     /// Add a metamethod which accepts a `&T` as the first parameter.
     ///
@@ -394,7 +395,7 @@ pub trait UserDataMethods<T: UserData> {
         S: Into<MetaMethod>,
         A: FromLuaMulti,
         R: ToLuaMulti,
-        M: 'static + MaybeSend + Fn(&Lua, &T, A) -> Result<R>;
+        M: 'static + MaybeSend + Fn(&Lua, &T, A) -> eyre::Result<R>;
 
     /// Add a metamethod as a function which accepts a `&mut T` as the first parameter.
     ///
@@ -409,7 +410,7 @@ pub trait UserDataMethods<T: UserData> {
         S: Into<MetaMethod>,
         A: FromLuaMulti,
         R: ToLuaMulti,
-        M: 'static + MaybeSend + FnMut(&Lua, &mut T, A) -> Result<R>;
+        M: 'static + MaybeSend + FnMut(&Lua, &mut T, A) -> eyre::Result<R>;
 
     /// Add an async metamethod which accepts a `T` as the first parameter and returns Future.
     /// The passed `T` is cloned from the original value.
@@ -419,7 +420,7 @@ pub trait UserDataMethods<T: UserData> {
     /// Requires `feature = "async"`
     ///
     /// [`add_meta_method`]: #method.add_meta_method
-    #[cfg(all(feature = "async", not(any(feature = "lua51", feature = "luau"))))]
+    #[cfg(all(feature = "async", not(any(feature = "lua51"))))]
     #[cfg_attr(docsrs, doc(cfg(feature = "async")))]
     fn add_async_meta_method<S, A, R, M, MR>(&mut self, name: S, method: M)
     where
@@ -440,7 +441,7 @@ pub trait UserDataMethods<T: UserData> {
         S: Into<MetaMethod>,
         A: FromLuaMulti,
         R: ToLuaMulti,
-        F: 'static + MaybeSend + Fn(&Lua, A) -> Result<R>;
+        F: 'static + MaybeSend + Fn(&Lua, A) -> eyre::Result<R>;
 
     /// Add a metamethod as a mutable function which accepts generic arguments.
     ///
@@ -452,7 +453,7 @@ pub trait UserDataMethods<T: UserData> {
         S: Into<MetaMethod>,
         A: FromLuaMulti,
         R: ToLuaMulti,
-        F: 'static + MaybeSend + FnMut(&Lua, A) -> Result<R>;
+        F: 'static + MaybeSend + FnMut(&Lua, A) -> eyre::Result<R>;
 
     /// Add a metamethod which accepts generic arguments and returns Future.
     ///
@@ -461,7 +462,7 @@ pub trait UserDataMethods<T: UserData> {
     /// Requires `feature = "async"`
     ///
     /// [`add_meta_function`]: #method.add_meta_function
-    #[cfg(all(feature = "async", not(any(feature = "lua51", feature = "luau"))))]
+    #[cfg(all(feature = "async", not(any(feature = "lua51"))))]
     #[cfg_attr(docsrs, doc(cfg(feature = "async")))]
     fn add_async_meta_function<S, A, R, F, FR>(&mut self, name: S, function: F)
     where
@@ -510,7 +511,7 @@ pub trait UserDataFields<T: UserData> {
     where
         S: AsRef<[u8]> + ?Sized,
         R: ToLua,
-        M: 'static + MaybeSend + Fn(&Lua, &T) -> Result<R>;
+        M: 'static + MaybeSend + Fn(&Lua, &T) -> eyre::Result<R>;
 
     /// Add a regular field setter as a method which accepts a `&mut T` as the first parameter.
     ///
@@ -523,7 +524,7 @@ pub trait UserDataFields<T: UserData> {
     where
         S: AsRef<[u8]> + ?Sized,
         A: FromLua,
-        M: 'static + MaybeSend + FnMut(&Lua, &mut T, A) -> Result<()>;
+        M: 'static + MaybeSend + FnMut(&Lua, &mut T, A) -> eyre::Result<()>;
 
     /// Add a regular field getter as a function which accepts a generic [`AnyUserData`] of type `T`
     /// argument.
@@ -536,7 +537,7 @@ pub trait UserDataFields<T: UserData> {
     where
         S: AsRef<[u8]> + ?Sized,
         R: ToLua,
-        F: 'static + MaybeSend + Fn(&Lua, AnyUserData) -> Result<R>;
+        F: 'static + MaybeSend + Fn(&Lua, AnyUserData) -> eyre::Result<R>;
 
     /// Add a regular field setter as a function which accepts a generic [`AnyUserData`] of type `T`
     /// first argument.
@@ -549,7 +550,7 @@ pub trait UserDataFields<T: UserData> {
     where
         S: AsRef<[u8]> + ?Sized,
         A: FromLua,
-        F: 'static + MaybeSend + FnMut(&Lua, AnyUserData, A) -> Result<()>;
+        F: 'static + MaybeSend + FnMut(&Lua, AnyUserData, A) -> eyre::Result<()>;
 
     /// Add a metamethod value computed from `f`.
     ///
@@ -562,7 +563,7 @@ pub trait UserDataFields<T: UserData> {
     fn add_meta_field_with<S, R, F>(&mut self, meta: S, f: F)
     where
         S: Into<MetaMethod>,
-        F: 'static + MaybeSend + Fn(&Lua) -> Result<R>,
+        F: 'static + MaybeSend + Fn(&Lua) -> eyre::Result<R>,
         R: ToLua;
 
     //
@@ -839,7 +840,7 @@ impl AnyUserData {
                         ffi::lua_pushnil(lua.state);
                         ffi::lua_setiuservalue(lua.state, -2, i as c_int);
                     }
-                    #[cfg(any(feature = "lua53", feature = "lua52", feature = "luau"))]
+                    #[cfg(any(feature = "lua53", feature = "lua52"))]
                     {
                         ffi::lua_pushnil(lua.state);
                         ffi::lua_setuservalue(lua.state, -2);
@@ -877,7 +878,7 @@ impl AnyUserData {
     /// [`set_user_value`]: #method.set_user_value
     /// [`get_nth_user_value`]: #method.get_nth_user_value
     #[inline]
-    pub fn get_user_value<V: FromLua>(&self) -> Result<V> {
+    pub fn get_user_value<V: FromLua>(&self) -> eyre::Result<V> {
         self.get_nth_user_value(1)
     }
 
@@ -945,11 +946,11 @@ impl AnyUserData {
     /// For other Lua versions this functionality is provided using a wrapping table.
     ///
     /// [`set_nth_user_value`]: #method.set_nth_user_value
-    pub fn get_nth_user_value<V: FromLua>(&self, n: usize) -> Result<V> {
+    pub fn get_nth_user_value<V: FromLua>(&self, n: usize) -> eyre::Result<V> {
         if n < 1 || n > u16::MAX as usize {
-            return Err(Error::RuntimeError(
+            return Err(Report::new(Error::RuntimeError(
                 "user value index out of bounds".to_string(),
-            ));
+            )));
         }
 
         let lua = &self.0.lua.optional()?;
@@ -977,7 +978,7 @@ impl AnyUserData {
                 ffi::lua_rawgeti(state, -1, n as ffi::lua_Integer);
             })?;
 
-            V::from_lua(lua.pop_value(), lua)
+            Ok(V::from_lua(lua.pop_value(), lua)?)
         }
     }
 
@@ -1048,7 +1049,7 @@ impl AnyUserData {
                 ffi::lua_rawget(state, -2);
             })?;
 
-            V::from_lua(lua.pop_value(), lua)
+            Ok(V::from_lua(lua.pop_value(), lua)?)
         }
     }
 
@@ -1116,6 +1117,22 @@ impl AnyUserData {
             }
         }
     }
+
+    pub(crate) fn from_lua_impl(value: Value, _: &Lua) -> eyre::Result<AnyUserData> {
+        match value {
+            Value::UserData(ud) => Ok(ud),
+            _ => Err(Error::FromLuaConversionError {
+                from: value.type_name(),
+                to: "userdata",
+                message: None,
+            }).wrap_err(type_name::<Self>()),
+        }
+    }
+
+    pub(crate) fn to_lua_impl(self, _: &Lua) -> eyre::Result<Value> {
+        Ok(Value::UserData(self))
+    }
+
 }
 
 impl PartialEq for AnyUserData {
@@ -1147,7 +1164,7 @@ impl UserDataMetatable {
     ///
     /// If no value is associated to `key`, returns the `Nil` value.
     /// Access to restricted metamethods such as `__gc` or `__metatable` will cause an error.
-    pub fn get<K: Into<MetaMethod>, V: FromLua>(&self, key: K) -> Result<V> {
+    pub fn get<K: Into<MetaMethod>, V: FromLua>(&self, key: K) -> eyre::Result<V> {
         self.0.raw_get(key.into().validate()?.name())
     }
 
@@ -1168,7 +1185,7 @@ impl UserDataMetatable {
 
     /// Checks whether the metatable contains a non-nil value for `key`.
     pub fn contains<K: Into<MetaMethod>>(&self, key: K) -> Result<bool> {
-        self.0.contains_key(key.into().validate()?.name())
+        Ok(       self.0.contains_key(key.into().validate()?.name())?)
     }
 
     /// Consumes this metatable and returns an iterator over the pairs of the metatable.
@@ -1195,7 +1212,7 @@ impl<V> Iterator for UserDataMetatablePairs<V>
 where
     V: FromLua,
 {
-    type Item = Result<(MetaMethod, V)>;
+    type Item = eyre::Result<(MetaMethod, V)>;
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {

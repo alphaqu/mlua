@@ -2,12 +2,14 @@
 
 use std::error::Error as StdError;
 use std::fmt;
+use std::fmt::Debug;
 use std::io::Error as IoError;
 use std::net::AddrParseError;
 use std::result::Result as StdResult;
 use std::str::Utf8Error;
 use std::string::String as StdString;
 use std::sync::Arc;
+use eyre::{ErrReport, Report};
 
 /// Error type returned by `mlua` methods.
 #[derive(Debug, Clone)]
@@ -178,7 +180,8 @@ pub enum Error {
     /// error. The Rust code that originally invoked the Lua code then receives a `CallbackError`,
     /// from which the original error (and a stack traceback) can be recovered.
     ExternalError(Arc<dyn StdError + Send + Sync>),
-    LuaUnavailable
+    LuaUnavailable,
+    Report(Arc<Report>)
 }
 
 /// A specialized `Result` type used by `mlua`'s API.
@@ -284,7 +287,10 @@ impl fmt::Display for Error {
                 write!(fmt, "deserialize error: {}", err)
             },
             Error::ExternalError(ref err) => write!(fmt, "{}", err),
-            Error::LuaUnavailable => write!(fmt, "lua unavailable")
+            Error::LuaUnavailable => write!(fmt, "lua unavailable"),
+            Error::Report(ref report) => {
+                write!(fmt, "{}", report)
+            }
         }
     }
 }
@@ -332,23 +338,30 @@ where
     }
 }
 
-impl std::convert::From<AddrParseError> for Error {
+impl From<AddrParseError> for Error {
     fn from(err: AddrParseError) -> Self {
         Error::external(err)
     }
 }
 
-impl std::convert::From<IoError> for Error {
+impl From<IoError> for Error {
     fn from(err: IoError) -> Self {
         Error::external(err)
     }
 }
 
-impl std::convert::From<Utf8Error> for Error {
+impl From<Utf8Error> for Error {
     fn from(err: Utf8Error) -> Self {
         Error::external(err)
     }
 }
+
+impl From<Report> for Error {
+    fn from(err: Report) -> Self {
+        Error::Report(Arc::new(err))
+    }
+}
+
 
 #[cfg(feature = "serialize")]
 impl serde::ser::Error for Error {

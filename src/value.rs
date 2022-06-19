@@ -34,10 +34,6 @@ pub enum Value {
     Integer(Integer),
     /// A floating point number.
     Number(Number),
-    /// A Luau vector.
-    #[cfg(any(feature = "luau", doc))]
-    #[cfg_attr(docsrs, doc(cfg(feature = "luau")))]
-    Vector(f32, f32, f32),
     /// An interned string, managed by Lua.
     ///
     /// Unlike Rust strings, Lua strings may not be valid UTF-8.
@@ -65,8 +61,6 @@ impl Value {
             Value::LightUserData(_) => "lightuserdata",
             Value::Integer(_) => "integer",
             Value::Number(_) => "number",
-            #[cfg(feature = "luau")]
-            Value::Vector(_, _, _) => "vector",
             Value::String(_) => "string",
             Value::Table(_) => "table",
             Value::Function(_) => "function",
@@ -105,8 +99,6 @@ impl PartialEq for Value {
             (Value::Integer(a), Value::Number(b)) => *a as Number == *b,
             (Value::Number(a), Value::Integer(b)) => *a == *b as Number,
             (Value::Number(a), Value::Number(b)) => *a == *b,
-            #[cfg(feature = "luau")]
-            (Value::Vector(x1, y1, z1), Value::Vector(x2, y2, z2)) => (x1, y1, z1) == (x2, y2, z2),
             (Value::String(a), Value::String(b)) => a == b,
             (Value::Table(a), Value::Table(b)) => a == b,
             (Value::Function(a), Value::Function(b)) => a == b,
@@ -138,8 +130,6 @@ impl Serialize for Value {
                 .serialize_i64((*i).try_into().expect("cannot convert lua_Integer to i64")),
             #[allow(clippy::useless_conversion)]
             Value::Number(n) => serializer.serialize_f64(*n),
-            #[cfg(feature = "luau")]
-            Value::Vector(x, y, z) => (x, y, z).serialize(serializer),
             Value::String(s) => s.serialize(serializer),
             Value::Table(t) => t.serialize(serializer),
             Value::UserData(ud) => ud.serialize(serializer),
@@ -155,13 +145,13 @@ impl Serialize for Value {
 /// Trait for types convertible to `Value`.
 pub trait ToLua {
     /// Performs the conversion.
-    fn to_lua(self, lua: &Lua) -> Result<Value>;
+    fn to_lua(self, lua: &Lua) -> eyre::Result<Value>;
 }
 
 /// Trait for types convertible from `Value`.
 pub trait FromLua: Sized {
     /// Performs the conversion.
-    fn from_lua(lua_value: Value, lua: &Lua) -> Result<Self>;
+    fn from_lua(lua_value: Value, lua: &Lua) -> eyre::Result<Self>;
 }
 
 /// Multiple Lua values used for both argument passing and also for multiple return values.
@@ -273,8 +263,8 @@ impl MultiValue {
     #[inline]
     pub(crate) fn refill(
         &mut self,
-        iter: impl IntoIterator<Item = Result<Value>>,
-    ) -> Result<()> {
+        iter: impl IntoIterator<Item = eyre::Result<Value>>,
+    ) -> eyre::Result<()> {
         self.0.clear();
         for value in iter {
             self.0.push(value?);
@@ -290,7 +280,7 @@ impl MultiValue {
 /// one. Any type that implements `ToLua` will automatically implement this trait.
 pub trait ToLuaMulti {
     /// Performs the conversion.
-    fn to_lua_multi(self, lua: &Lua) -> Result<MultiValue>;
+    fn to_lua_multi(self, lua: &Lua) -> eyre::Result<MultiValue>;
 }
 
 /// Trait for types that can be created from an arbitrary number of Lua values.
@@ -304,5 +294,5 @@ pub trait FromLuaMulti: Sized {
     /// values should be ignored. This reflects the semantics of Lua when calling a function or
     /// assigning values. Similarly, if not enough values are given, conversions should assume that
     /// any missing values are nil.
-    fn from_lua_multi(values: MultiValue, lua: &Lua) -> Result<Self>;
+    fn from_lua_multi(values: MultiValue, lua: &Lua) -> eyre::Result<Self>;
 }

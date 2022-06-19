@@ -88,8 +88,6 @@ mod ffi;
 mod function;
 mod hook;
 mod lua;
-#[cfg(feature = "luau")]
-mod luau;
 mod multi;
 mod scope;
 mod stdlib;
@@ -112,7 +110,8 @@ pub use crate::function::Function;
 pub use crate::hook::{Debug, DebugEvent, DebugNames, DebugSource, DebugStack};
 pub use crate::lua::{GCMode, Lua, LuaOptions};
 pub use crate::multi::Variadic;
-pub use crate::scope::Scope;
+pub use crate::conversion::{UserDataFromLua, UserDataToLua};
+pub use crate::scope::{LuaScope, LuaWeak, GlueError};
 pub use crate::stdlib::StdLib;
 pub use crate::string::String;
 pub use crate::table::{Table, TableExt, TablePairs, TableSequence};
@@ -123,15 +122,16 @@ pub use crate::userdata::{
 };
 pub use crate::value::{FromLua, FromLuaMulti, MultiValue, Nil, ToLua, ToLuaMulti, Value};
 
-#[cfg(not(feature = "luau"))]
-pub use crate::hook::HookTriggers;
 
-#[cfg(any(feature = "luau", doc))]
-#[cfg_attr(docsrs, doc(cfg(feature = "luau")))]
-pub use crate::{chunk::Compiler, types::VmState};
+pub use crate::hook::HookTriggers;
 
 #[cfg(feature = "async")]
 pub use crate::thread::AsyncThread;
+
+#[cfg(feature = "macro")]
+pub mod impl_macro {
+    pub use apollo_macro::*;
+}
 
 #[cfg(feature = "serialize")]
 #[doc(inline)]
@@ -142,85 +142,3 @@ pub use crate::serde::{
 #[cfg(feature = "serialize")]
 #[cfg_attr(docsrs, doc(cfg(feature = "serialize")))]
 pub mod serde;
-
-#[cfg(any(feature = "mlua_derive"))]
-#[allow(unused_imports)]
-#[macro_use]
-extern crate mlua_derive;
-
-/// Create a type that implements [`AsChunk`] and can capture Rust variables.
-///
-/// This macro allows to write Lua code directly in Rust code.
-///
-/// Rust variables can be referenced from Lua using `$` prefix, as shown in the example below.
-/// User's Rust types needs to implement [`UserData`] or [`ToLua`] traits.
-///
-/// Captured variables are **moved** into the chunk.
-///
-/// ```
-/// use mlua::{Lua, Result, chunk};
-///
-/// fn main() -> Result<()> {
-///     let lua = Lua::new();
-///     let name = "Rustacean";
-///     lua.load(chunk! {
-///         print("hello, " .. $name)
-///     }).exec()
-/// }
-/// ```
-///
-/// ## Syntax issues
-///
-/// Since the Rust tokenizer will tokenize Lua code, this imposes some restrictions.
-/// The main thing to remember is:
-///
-/// - Use double quoted strings (`""`) instead of single quoted strings (`''`).
-///
-///   (Single quoted strings only work if they contain a single character, since in Rust,
-///   `'a'` is a character literal).
-///
-/// - Using Lua comments `--` is not desirable in **stable** Rust and can have bad side effects.
-///
-///   This is because procedural macros have Line/Column information available only in
-///   **nightly** Rust. Instead, Lua chunks represented as a big single line of code in stable Rust.
-///
-///   As workaround, Rust comments `//` can be used.
-///
-/// Other minor limitations:
-///
-/// - Certain escape codes in string literals don't work.
-///   (Specifically: `\a`, `\b`, `\f`, `\v`, `\123` (octal escape codes), `\u`, and `\U`).
-///
-///   These are accepted: : `\\`, `\n`, `\t`, `\r`, `\xAB` (hex escape codes), and `\0`.
-///
-/// - The `//` (floor division) operator is unusable, as its start a comment.
-///
-/// Everything else should work.
-///
-/// [`AsChunk`]: crate::AsChunk
-/// [`UserData`]: crate::UserData
-/// [`ToLua`]: crate::ToLua
-#[cfg(any(feature = "macros"))]
-#[cfg_attr(docsrs, doc(cfg(feature = "macros")))]
-pub use mlua_derive::chunk;
-
-/// Registers Lua module entrypoint.
-///
-/// You can register multiple entrypoints as required.
-///
-/// ```
-/// use mlua::{Lua, Result, Table};
-///
-/// #[mlua::lua_module]
-/// fn my_module(lua: &Lua) -> Result<Table> {
-///     let exports = lua.create_table()?;
-///     exports.set("hello", "world")?;
-///     Ok(exports)
-/// }
-/// ```
-///
-/// Internally in the code above the compiler defines C function `luaopen_my_module`.
-///
-#[cfg(any(feature = "module", docsrs))]
-#[cfg_attr(docsrs, doc(cfg(feature = "module")))]
-pub use mlua_derive::lua_module;

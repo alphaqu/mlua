@@ -15,6 +15,7 @@ use crate::value::{FromLua, FromLuaMulti, ToLua, ToLuaMulti, Value};
 
 #[cfg(not(feature = "send"))]
 use std::rc::Rc;
+use eyre::Report;
 
 #[cfg(feature = "async")]
 use {
@@ -53,7 +54,7 @@ impl<T: 'static + UserData> UserDataMethods<T> for StaticUserDataMethods<T> {
         S: AsRef<[u8]> + ?Sized,
         A: FromLuaMulti,
         R: ToLuaMulti,
-        M: 'static + MaybeSend + Fn(&Lua, &T, A) -> Result<R>,
+        M: 'static + MaybeSend + Fn(&Lua, &T, A) -> eyre::Result<R>,
     {
         self.methods
             .push((name.as_ref().to_vec(), Self::box_method(method)));
@@ -64,7 +65,7 @@ impl<T: 'static + UserData> UserDataMethods<T> for StaticUserDataMethods<T> {
         S: AsRef<[u8]> + ?Sized,
         A: FromLuaMulti,
         R: ToLuaMulti,
-        M: 'static + MaybeSend + FnMut(&Lua, &mut T, A) -> Result<R>,
+        M: 'static + MaybeSend + FnMut(&Lua, &mut T, A) -> eyre::Result<R>,
     {
         self.methods
             .push((name.as_ref().to_vec(), Self::box_method_mut(method)));
@@ -78,7 +79,7 @@ impl<T: 'static + UserData> UserDataMethods<T> for StaticUserDataMethods<T> {
         A: FromLuaMulti,
         R: ToLuaMulti,
         M: 'static + MaybeSend + Fn(&Lua, T, A) -> MR,
-        MR: Future<Output = Result<R>>,
+        MR: Future<Output = eyre::Result<R>>,
     {
         self.async_methods
             .push((name.as_ref().to_vec(), Self::box_async_method(method)));
@@ -89,7 +90,7 @@ impl<T: 'static + UserData> UserDataMethods<T> for StaticUserDataMethods<T> {
         S: AsRef<[u8]> + ?Sized,
         A: FromLuaMulti,
         R: ToLuaMulti,
-        F: 'static + MaybeSend + Fn(&Lua, A) -> Result<R>,
+        F: 'static + MaybeSend + Fn(&Lua, A) -> eyre::Result<R>,
     {
         self.methods
             .push((name.as_ref().to_vec(), Self::box_function(function)));
@@ -100,7 +101,7 @@ impl<T: 'static + UserData> UserDataMethods<T> for StaticUserDataMethods<T> {
         S: AsRef<[u8]> + ?Sized,
         A: FromLuaMulti,
         R: ToLuaMulti,
-        F: 'static + MaybeSend + FnMut(&Lua, A) -> Result<R>,
+        F: 'static + MaybeSend + FnMut(&Lua, A) -> eyre::Result<R>,
     {
         self.methods
             .push((name.as_ref().to_vec(), Self::box_function_mut(function)));
@@ -113,7 +114,7 @@ impl<T: 'static + UserData> UserDataMethods<T> for StaticUserDataMethods<T> {
         A: FromLuaMulti,
         R: ToLuaMulti,
         F: 'static + MaybeSend + Fn(&Lua, A) -> FR,
-        FR: Future<Output = Result<R>>,
+        FR: Future<Output = eyre::Result<R>>,
     {
         self.async_methods
             .push((name.as_ref().to_vec(), Self::box_async_function(function)));
@@ -124,7 +125,7 @@ impl<T: 'static + UserData> UserDataMethods<T> for StaticUserDataMethods<T> {
         S: Into<MetaMethod>,
         A: FromLuaMulti,
         R: ToLuaMulti,
-        M: 'static + MaybeSend + Fn(&Lua, &T, A) -> Result<R>,
+        M: 'static + MaybeSend + Fn(&Lua, &T, A) -> eyre::Result<R>,
     {
         self.meta_methods
             .push((meta.into(), Self::box_method(method)));
@@ -135,13 +136,13 @@ impl<T: 'static + UserData> UserDataMethods<T> for StaticUserDataMethods<T> {
         S: Into<MetaMethod>,
         A: FromLuaMulti,
         R: ToLuaMulti,
-        M: 'static + MaybeSend + FnMut(&Lua, &mut T, A) -> Result<R>,
+        M: 'static + MaybeSend + FnMut(&Lua, &mut T, A) -> eyre::Result<R>,
     {
         self.meta_methods
             .push((meta.into(), Self::box_method_mut(method)));
     }
 
-    #[cfg(all(feature = "async", not(any(feature = "lua51", feature = "luau"))))]
+    #[cfg(all(feature = "async", not(any(feature = "lua51"))))]
     fn add_async_meta_method<S, A, R, M, MR>(&mut self, meta: S, method: M)
     where
         T: Clone,
@@ -149,7 +150,7 @@ impl<T: 'static + UserData> UserDataMethods<T> for StaticUserDataMethods<T> {
         A: FromLuaMulti,
         R: ToLuaMulti,
         M: 'static + MaybeSend + Fn(&Lua, T, A) -> MR,
-        MR: 'lua + Future<Output = Result<R>>,
+        MR: 'lua + Future<Output = eyre::Result<R>>,
     {
         self.async_meta_methods
             .push((meta.into(), Self::box_async_method(method)));
@@ -160,7 +161,7 @@ impl<T: 'static + UserData> UserDataMethods<T> for StaticUserDataMethods<T> {
         S: Into<MetaMethod>,
         A: FromLuaMulti,
         R: ToLuaMulti,
-        F: 'static + MaybeSend + Fn(&Lua, A) -> Result<R>,
+        F: 'static + MaybeSend + Fn(&Lua, A) -> eyre::Result<R>,
     {
         self.meta_methods
             .push((meta.into(), Self::box_function(function)));
@@ -171,13 +172,13 @@ impl<T: 'static + UserData> UserDataMethods<T> for StaticUserDataMethods<T> {
         S: Into<MetaMethod>,
         A: FromLuaMulti,
         R: ToLuaMulti,
-        F: 'static + MaybeSend + FnMut(&Lua, A) -> Result<R>,
+        F: 'static + MaybeSend + FnMut(&Lua, A) -> eyre::Result<R>,
     {
         self.meta_methods
             .push((meta.into(), Self::box_function_mut(function)));
     }
 
-    #[cfg(all(feature = "async", not(any(feature = "lua51", feature = "luau"))))]
+    #[cfg(all(feature = "async", not(any(feature = "lua51"))))]
     fn add_async_meta_function<S, A, R, F, FR>(&mut self, meta: S, function: F)
     where
         S: Into<MetaMethod>,
@@ -220,7 +221,7 @@ impl<T: 'static + UserData> StaticUserDataMethods<T> {
     where
         A: FromLuaMulti,
         R: ToLuaMulti,
-        M: 'static + MaybeSend + Fn(&Lua, &T, A) -> Result<R>,
+        M: 'static + MaybeSend + Fn(&Lua, &T, A) -> eyre::Result<R>,
     {
         Box::new(move |lua, mut args| {
             if let Some(front) = args.pop_front() {
@@ -233,33 +234,33 @@ impl<T: 'static + UserData> StaticUserDataMethods<T> {
                     match type_id {
                         Some(id) if id == TypeId::of::<T>() => {
                             let ud = get_userdata_ref::<T>(lua.state)?;
-                            method(lua, &ud, A::from_lua_multi(args, lua)?)?.to_lua_multi(lua)
+                            Ok(method(lua, &ud, A::from_lua_multi(args, lua)?)?.to_lua_multi(lua)?)
                         }
                         #[cfg(not(feature = "send"))]
                         Some(id) if id == TypeId::of::<Rc<RefCell<T>>>() => {
                             let ud = get_userdata_ref::<Rc<RefCell<T>>>(lua.state)?;
                             let ud = ud.try_borrow().map_err(|_| Error::UserDataBorrowError)?;
-                            method(lua, &ud, A::from_lua_multi(args, lua)?)?.to_lua_multi(lua)
+                            Ok(method(lua, &ud, A::from_lua_multi(args, lua)?)?.to_lua_multi(lua))?
                         }
                         Some(id) if id == TypeId::of::<Arc<Mutex<T>>>() => {
                             let ud = get_userdata_ref::<Arc<Mutex<T>>>(lua.state)?;
                             let ud = ud.try_lock().map_err(|_| Error::UserDataBorrowError)?;
-                            method(lua, &ud, A::from_lua_multi(args, lua)?)?.to_lua_multi(lua)
+                            Ok(method(lua, &ud, A::from_lua_multi(args, lua)?)?.to_lua_multi(lua)?)
                         }
                         Some(id) if id == TypeId::of::<Arc<RwLock<T>>>() => {
                             let ud = get_userdata_ref::<Arc<RwLock<T>>>(lua.state)?;
                             let ud = ud.try_read().map_err(|_| Error::UserDataBorrowError)?;
-                            method(lua, &ud, A::from_lua_multi(args, lua)?)?.to_lua_multi(lua)
+                            Ok(method(lua, &ud, A::from_lua_multi(args, lua)?)?.to_lua_multi(lua)?)
                         }
-                        _ => Err(Error::UserDataTypeMismatch),
+                        _ => Err(Report::new(Error::UserDataTypeMismatch)),
                     }
                 }
             } else {
-                Err(Error::FromLuaConversionError {
+                Err(Report::new(Error::FromLuaConversionError {
                     from: "missing argument",
                     to: "userdata",
                     message: None,
-                })
+                }))
             }
         })
     }
@@ -268,7 +269,7 @@ impl<T: 'static + UserData> StaticUserDataMethods<T> {
     where
         A: FromLuaMulti,
         R: ToLuaMulti,
-        M: 'static + MaybeSend + FnMut(&Lua, &mut T, A) -> Result<R>,
+        M: 'static + MaybeSend + FnMut(&Lua, &mut T, A) -> eyre::Result<R>,
     {
         let method = RefCell::new(method);
         Box::new(move |lua, mut args| {
@@ -307,15 +308,15 @@ impl<T: 'static + UserData> StaticUserDataMethods<T> {
                                 ud.try_write().map_err(|_| Error::UserDataBorrowMutError)?;
                             method(lua, &mut ud, A::from_lua_multi(args, lua)?)?.to_lua_multi(lua)
                         }
-                        _ => Err(Error::UserDataTypeMismatch),
+                        _ => Err(Report::new(Error::UserDataTypeMismatch)),
                     }
                 }
             } else {
-                Err(Error::FromLuaConversionError {
+                Err(Report::new(Error::FromLuaConversionError {
                     from: "missing argument",
                     to: "userdata",
                     message: None,
-                })
+                }))
             }
         })
     }
@@ -327,7 +328,7 @@ impl<T: 'static + UserData> StaticUserDataMethods<T> {
         A: FromLuaMulti,
         R: ToLuaMulti,
         M: 'static + MaybeSend + Fn(&Lua, T, A) -> MR,
-        MR: 'lua + Future<Output = Result<R>>,
+        MR: 'lua + Future<Output = eyre::Result<R>>,
     {
         Box::new(move |lua, mut args| {
             let fut_res = || {
@@ -381,7 +382,7 @@ impl<T: 'static + UserData> StaticUserDataMethods<T> {
     where
         A: FromLuaMulti,
         R: ToLuaMulti,
-        F: 'static + MaybeSend + Fn(&Lua, A) -> Result<R>,
+        F: 'static + MaybeSend + Fn(&Lua, A) -> eyre::Result<R>,
     {
         Box::new(move |lua, args| function(lua, A::from_lua_multi(args, lua)?)?.to_lua_multi(lua))
     }
@@ -390,7 +391,7 @@ impl<T: 'static + UserData> StaticUserDataMethods<T> {
     where
         A: FromLuaMulti,
         R: ToLuaMulti,
-        F: 'static + MaybeSend + FnMut(&Lua, A) -> Result<R>,
+        F: 'static + MaybeSend + FnMut(&Lua, A) -> eyre::Result<R>,
     {
         let function = RefCell::new(function);
         Box::new(move |lua, args| {
@@ -407,7 +408,7 @@ impl<T: 'static + UserData> StaticUserDataMethods<T> {
         A: FromLuaMulti,
         R: ToLuaMulti,
         F: 'static + MaybeSend + Fn(&Lua, A) -> FR,
-        FR: 'lua + Future<Output = Result<R>>,
+        FR: 'lua + Future<Output = eyre::Result<R>>,
     {
         Box::new(move |lua, args| {
             let args = match A::from_lua_multi(args, lua) {
@@ -446,7 +447,7 @@ impl<T: 'static + UserData> UserDataFields<T> for StaticUserDataFields<T> {
     where
         S: AsRef<[u8]> + ?Sized,
         R: ToLua,
-        M: 'static + MaybeSend + Fn(&Lua, &T) -> Result<R>,
+        M: 'static + MaybeSend + Fn(&Lua, &T) -> eyre::Result<R>,
     {
         self.field_getters.push((
             name.as_ref().to_vec(),
@@ -458,7 +459,7 @@ impl<T: 'static + UserData> UserDataFields<T> for StaticUserDataFields<T> {
     where
         S: AsRef<[u8]> + ?Sized,
         A: FromLua,
-        M: 'static + MaybeSend + FnMut(&Lua, &mut T, A) -> Result<()>,
+        M: 'static + MaybeSend + FnMut(&Lua, &mut T, A) -> eyre::Result<()>,
     {
         self.field_setters.push((
             name.as_ref().to_vec(),
@@ -470,7 +471,7 @@ impl<T: 'static + UserData> UserDataFields<T> for StaticUserDataFields<T> {
     where
         S: AsRef<[u8]> + ?Sized,
         R: ToLua,
-        F: 'static + MaybeSend + Fn(&Lua, AnyUserData) -> Result<R>,
+        F: 'static + MaybeSend + Fn(&Lua, AnyUserData) -> eyre::Result<R>,
     {
         self.field_getters.push((
             name.as_ref().to_vec(),
@@ -482,7 +483,7 @@ impl<T: 'static + UserData> UserDataFields<T> for StaticUserDataFields<T> {
     where
         S: AsRef<[u8]> + ?Sized,
         A: FromLua,
-        F: 'static + MaybeSend + FnMut(&Lua, AnyUserData, A) -> Result<()>,
+        F: 'static + MaybeSend + FnMut(&Lua, AnyUserData, A) -> eyre::Result<()>,
     {
         self.field_setters.push((
             name.as_ref().to_vec(),
@@ -496,7 +497,7 @@ impl<T: 'static + UserData> UserDataFields<T> for StaticUserDataFields<T> {
     where
         S: Into<MetaMethod>,
         R: ToLua,
-        F: 'static + MaybeSend + Fn(&Lua) -> Result<R>,
+        F: 'static + MaybeSend + Fn(&Lua) -> eyre::Result<R>,
     {
         let meta = meta.into();
         self.meta_fields.push((

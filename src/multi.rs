@@ -4,7 +4,7 @@ use std::iter::FromIterator;
 use std::ops::{Deref, DerefMut};
 use std::result::Result as StdResult;
 
-use crate::error::Result;
+use eyre::Result;
 use crate::lua::Lua;
 use crate::value::{FromLua, FromLuaMulti, MultiValue, Nil, ToLua, ToLuaMulti};
 
@@ -36,7 +36,7 @@ impl<T: FromLua> FromLuaMulti for T {
     fn from_lua_multi(mut values: MultiValue, lua: &Lua) -> Result<Self> {
         let res = T::from_lua(values.pop_front().unwrap_or(Nil), lua);
         lua.cache_multivalue(values);
-        res
+        Ok(res?)
     }
 }
 
